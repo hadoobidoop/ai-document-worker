@@ -8,7 +8,7 @@ import requests
 # Langchain Text Splitter 임포트
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from analysis_lambda import config
+from config.settings import GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ text_splitter = RecursiveCharacterTextSplitter(
 
 def _call_groq_api(prompt_content: str, max_tokens: int, system_prompt_content: str) -> str | None:
     """Groq API를 호출하여 응답을 반환하는 내부 헬퍼 함수입니다."""
-    if not config.GROQ_API_KEY:
-        logger.error("Groq API key is not configured in config.py.")
+    if not GROQ_API_KEY:
+        logger.error("Groq API key is not configured in settings.py.")
         return None
 
     request_payload = {
@@ -60,7 +60,7 @@ def _call_groq_api(prompt_content: str, max_tokens: int, system_prompt_content: 
 
     try:
         headers = {
-            "Authorization": f"Bearer {config.GROQ_API_KEY}",
+            "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json",
         }
         # Groq API 엔드포인트 확인 필요

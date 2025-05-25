@@ -5,7 +5,7 @@ import json
 import logging
 import os
 
-from analysis_lambda.config import SQS_QUEUE_URL
+from config.settings import SQS_QUEUE_URL
 
 logger = logging.getLogger()
 # 로거 레벨은 ingestion_lambda/handler.py 등에서 설정되었거나 Lambda 환경 설정 따름

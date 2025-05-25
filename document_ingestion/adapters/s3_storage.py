@@ -3,7 +3,7 @@
 import boto3
 import logging
 
-from analysis_lambda.config import INGESTION_S3_BUCKET_NAME
+from config.settings import INGESTION_S3_BUCKET_NAME
 
 logger = logging.getLogger()
 # 로거 레벨은 ingestion_lambda/handler.py 등에서 설정되었거나 Lambda 환경 설정 따름
@@ -53,6 +53,6 @@ def upload_text(object_key: str, text_content: str) -> str:
 
     except Exception as e:
         # Boto3 S3 관련 예외 발생 시
-        logger.error(f"S3 업로드 실패: 버킷={S3_BUCKET_NAME}, 키={object_key}, 오류={e}", exc_info=True)
+        logger.error(f"S3 업로드 실패: 버킷={INGESTION_S3_BUCKET_NAME}, 키={object_key}, 오류={e}", exc_info=True)
         # 업로드 실패 시 예외를 다시 발생시켜 호출자(orchestrator)에게 알림
         raise # 예외 다시 발생

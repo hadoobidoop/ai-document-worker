@@ -2,16 +2,16 @@
 # 이제 이 파일이 표준 백엔드 API 어댑터입니다.
 
 import logging
-import json
 import requests # HTTP API 호출을 위해 requests 라이브러리 사용
 from typing import List, Optional, Dict, Any # 타입 힌팅용
+
+from config import settings
 
 # config 모듈 임포트 경로 수정
 # worker.py가 프로젝트 루트에 있고, config.py가 analysis_lambda 폴더 하위에 있으므로
 # analysis_lambda를 패키지로 인식할 수 있도록 PYTHONPATH 설정이 되어있거나,
 # worker.py와 동일한 레벨로 config 관련 부분이 이동되어야 할 수 있습니다.
 # 여기서는 analysis_lambda가 PYTHONPATH에 있다고 가정합니다.
-from analysis_lambda import config
 
 # 로거 설정 (worker.py에서 logging.basicConfig로 전역 설정된 것을 따름)
 logger = logging.getLogger(__name__)
@@ -53,12 +53,12 @@ def save_analysis_results_to_backend(
     Returns:
         API 호출 성공 시 True, 실패 시 False.
     """
-    if not config.SPRING_BOOT_API_ENDPOINT:
+    if not settings.SPRING_BOOT_API_ENDPOINT:
         logger.error("SPRING_BOOT_API_ENDPOINT가 config.py에 설정되지 않았습니다. 분석 결과를 백엔드로 전송할 수 없습니다.")
         return False
 
     # 전체 API URL 구성
-    api_url = f"{config.SPRING_BOOT_API_ENDPOINT.rstrip('/')}{ANALYSIS_RESULTS_API_PATH}"
+    api_url = f"{settings.SPRING_BOOT_API_ENDPOINT.rstrip('/')}{ANALYSIS_RESULTS_API_PATH}"
 
     # 백엔드 API로 전송할 데이터 페이로드 구성
     payload: Dict[str, Any] = {

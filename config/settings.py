@@ -1,4 +1,4 @@
-# analysis_worker_app/config.py
+# analysis_worker_app/settings.py
 
 import os
 import json
@@ -13,7 +13,7 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 # logging.getLogger("botocore").setLevel(logging.WARNING)
 
 # 애플리케이션 로거 (이름을 __name__ 대신 고정 문자열로 하거나, 최상위 패키지 이름 사용도 가능)
-logger = logging.getLogger("AnalysisWorkerConfig")
+logger = logging.getLogger(__name__) # 변경 후: config.settings 로거가 됨
 logger.setLevel(LOG_LEVEL)
 # 핸들러 설정 (Lambda 환경에서는 기본 핸들러가 이미 있을 수 있으나, 서버 환경에서는 명시적 설정 권장)
 # if not logger.handlers: # 핸들러 중복 추가 방지

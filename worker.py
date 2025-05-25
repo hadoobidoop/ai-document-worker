@@ -8,9 +8,9 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 
+import config
 # 애플리케이션 모듈 임포트
 from adapters import s3_reader, backend_api_adapter, vector_store_adapter
-from analysis_lambda import config
 from nlp_tasks import summarizer, categorizer, tag_extractor, embedding_generator
 
 # --- 로깅 설정 ---

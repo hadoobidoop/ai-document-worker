@@ -9,6 +9,8 @@ import os # Lambda/Fargate의 /tmp/ 경로 사용 위함
 
 from analysis_lambda import config
 
+from config import settings
+
 # config 모듈에서 S3 버킷, 경로 등 설정 가져오기
 
 logger = logging.getLogger(__name__)
@@ -62,8 +64,8 @@ def load_or_initialize_faiss_index():
         logger.info("FAISS index and metadata already loaded/initialized.")
         return
 
-    if not config.FAISS_INDEX_S3_BUCKET:
-        logger.error("FAISS_INDEX_S3_BUCKET is not configured in config.py. Cannot load or initialize FAISS index.")
+    if not settings.FAISS_INDEX_S3_BUCKET:
+        logger.error("FAISS_INDEX_S3_BUCKET is not configured in settings.py. Cannot load or initialize FAISS index.")
         # _faiss_store_initialized_successfully는 False로 유지하여 이후 작업 실패 유도
         return
 
