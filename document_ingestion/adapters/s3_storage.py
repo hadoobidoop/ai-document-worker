@@ -2,7 +2,8 @@
 
 import boto3
 import logging
-import os
+
+from analysis_lambda.config import INGESTION_S3_BUCKET_NAME
 
 logger = logging.getLogger()
 # 로거 레벨은 ingestion_lambda/handler.py 등에서 설정되었거나 Lambda 환경 설정 따름
@@ -11,15 +12,6 @@ logger = logging.getLogger()
 # AWS SDK는 Lambda 환경에서 AWS 자격 증명 및 리전을 자동으로 찾습니다.
 # 명시적으로 region_name을 지정할 수도 있습니다.
 s3_client = boto3.client('s3')
-
-# S3 버킷 이름은 환경 변수에서 가져오는 것을 권장
-# 이 Lambda 함수의 환경 변수에 S3_BUCKET_NAME을 설정해야 합니다.
-S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
-if not S3_BUCKET_NAME:
-    logger.error("환경 변수 S3_BUCKET_NAME이 설정되지 않았습니다. S3 업로드를 수행할 수 없습니다.")
-    # 실제 운영 환경에서는 이 경우 심각한 오류로 처리해야 합니다. 배포 전 확인 필수.
-    # raise EnvironmentError("S3_BUCKET_NAME environment variable not set.") # 배포 파이프라인에서 체크하도록 할 수도 있습니다.
-
 
 def upload_text(object_key: str, text_content: str) -> str:
     """
@@ -34,7 +26,7 @@ def upload_text(object_key: str, text_content: str) -> str:
         업로드 실패 시 예외 발생.
     """
     # 환경 변수 미설정 시 오류 체크
-    if not S3_BUCKET_NAME:
+    if not INGESTION_S3_BUCKET_NAME:
         logger.error(f"S3 버킷 이름이 구성되지 않아 {object_key} 업로드 실패.")
         raise EnvironmentError("S3_BUCKET_NAME environment variable not set.")
 
@@ -46,18 +38,15 @@ def upload_text(object_key: str, text_content: str) -> str:
     content_to_upload = text_content if text_content is not None else ""
 
     try:
-        logger.info(f"S3 업로드 시도: 버킷={S3_BUCKET_NAME}, 키={object_key}")
-
-        # S3에 파일 업로드
+        logger.info(f"S3 업로드 시도: 버킷={INGESTION_S3_BUCKET_NAME}, 키={object_key}")
         s3_client.put_object(
-            Bucket=S3_BUCKET_NAME,
+            Bucket=INGESTION_S3_BUCKET_NAME, # 수정
             Key=object_key,
-            Body=content_to_upload.encode('utf-8') # 텍스트를 UTF-8 바이트로 인코딩하여 저장
-            # ContentType='text/plain; charset=utf-8' # 필요시 Content-Type 지정
-            # ACL='bucket-owner-full-control' # 필요시 권한 설정
+            Body=content_to_upload.encode('utf-8'),
+            ContentType='text/plain; charset=utf-8' # 필요시 Content-Type 지정
         )
 
-        s3_path = f"s3://{S3_BUCKET_NAME}/{object_key}"
+        s3_path = f"s3://{INGESTION_S3_BUCKET_NAME}/{object_key}"
         logger.info(f"S3 업로드 성공: {s3_path}")
 
         return s3_path

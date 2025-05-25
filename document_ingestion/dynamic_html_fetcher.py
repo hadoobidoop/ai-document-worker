@@ -9,6 +9,7 @@ from playwright.sync_api import sync_playwright, Playwright, TimeoutError as Pla
 from bs4 import BeautifulSoup
 
 from . import text_cleaner
+from .html_constants import UNWANTED_HTML_TAGS
 from .static_html_fetcher import is_valid_url
 
 logger = logging.getLogger(__name__) # __name__ 사용 권장
@@ -60,7 +61,7 @@ def initialize_playwright():
             # 여기서 예외를 다시 발생시켜 호출자에게 알릴 수도 있습니다.
             # raise
 
-def fetch_and_clean_dynamic_html(url: str) -> str:
+def fetch_and_clean_dynamic_html(url: str, unwanted_tags_for_dynamic=None) -> str:
     """
     Dynamic HTML 페이지를 Headless Browser로 가져와서 클린 텍스트를 반환합니다.
     리소스 차단 기능이 추가되었습니다.
@@ -128,8 +129,7 @@ def fetch_and_clean_dynamic_html(url: str) -> str:
         # dynamic_html_fetcher 전용으로 다르게 가져갈 수도 있습니다.
         # 현재는 static_html_fetcher.py와 동일한 태그 목록을 사용한다고 가정합니다.
         # (이 부분은 static_html_fetcher.py의 unwanted_tags 목록과 동기화 필요)
-        unwanted_tags_for_dynamic = ['script', 'style', 'header', 'footer', 'nav', 'aside', 'form', 'iframe', 'noscript', 'meta', 'link', 'img', 'audio', 'video', 'canvas', 'svg']
-        for tag_name in unwanted_tags_for_dynamic:
+        for tag_name in UNWANTED_HTML_TAGS: # 수정: 공통 상수 사용
             for tag in soup.find_all(tag_name):
                 tag.extract()
 

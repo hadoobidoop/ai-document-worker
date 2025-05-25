@@ -5,6 +5,8 @@ import json
 import logging
 import os
 
+from analysis_lambda.config import SQS_QUEUE_URL
+
 logger = logging.getLogger()
 # 로거 레벨은 ingestion_lambda/handler.py 등에서 설정되었거나 Lambda 환경 설정 따름
 
@@ -34,7 +36,7 @@ def publish_analysis_request(message_body: dict) -> str:
         성공 시 SQS 메시지 ID (str). 발행 실패 시 예외 발생.
     """
     # 환경 변수 미설정 시 오류 체크
-    if not AI_ANALYSIS_SQS_QUEUE_URL:
+    if not SQS_QUEUE_URL:
         logger.error("AI 분석 SQS 큐 URL이 구성되지 않아 메시지 발행 실패.")
         raise EnvironmentError("AI_ANALYSIS_SQS_QUEUE_URL environment variable not set.")
 

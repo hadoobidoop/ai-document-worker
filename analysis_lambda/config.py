@@ -42,6 +42,13 @@ if not SQS_QUEUE_URL:
     logger.warning("필수 환경 변수 누락: SQS_QUEUE_URL. 워커가 SQS 메시지를 가져올 수 없습니다.")
 
 
+# --- Ingestion Service Configuration (수정/추가) ---
+# 수집된 텍스트가 저장될 S3 버킷 이름
+INGESTION_S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME') # 기존 환경 변수명 유지 또는 변경 가능
+if not INGESTION_S3_BUCKET_NAME:
+    logger.warning("환경 변수 S3_BUCKET_NAME (for ingestion text storage)이 설정되지 않았습니다.")
+    # 필요시 raise EnvironmentError(...)
+
 # --- FAISS Index S3 Storage Configuration ---
 FAISS_INDEX_S3_BUCKET = os.environ.get('FAISS_INDEX_S3_BUCKET')
 FAISS_INDEX_S3_PREFIX = os.environ.get('FAISS_INDEX_S3_PREFIX', 'vector_indexes/') # 기본값: 'vector_indexes/'

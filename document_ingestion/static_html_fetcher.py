@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 # 같은 ingestion_lambda 디렉토리 내 다른 모듈 임포트
 from . import text_cleaner
+from .html_constants import UNWANTED_HTML_TAGS
 
 logger = logging.getLogger()
 # 로거 레벨은 handler.py에서 설정되었거나 Lambda 환경 설정 따름
@@ -49,9 +50,9 @@ def fetch_and_clean_static_html(url: str) -> tuple[str, BeautifulSoup | None]:
 
         # -- 텍스트 추출 및 클리닝 (기존 로직 유지) --
         # 스크립트, 스타일 등 불필요한 태그 제거
-        unwanted_tags = ['script', 'style', 'header', 'footer', 'nav', 'aside', 'form', 'iframe', 'noscript', 'meta', 'link', 'img', 'audio', 'video', 'canvas', 'svg']
-        for tag in soup(unwanted_tags):
-            tag.extract()
+        for tag_name in UNWANTED_HTML_TAGS: # 수정: 공통 상수 사용
+            for tag_to_remove in soup(tag_name): # soup(tag_name)으로 직접 사용 가능
+              tag_to_remove.extract()
 
         # 텍스트 내용 추출
         page_text = soup.get_text(separator='\n', strip=True)
