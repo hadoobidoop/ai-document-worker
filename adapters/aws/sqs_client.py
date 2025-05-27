@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 # 로깅 설정 (worker.py와 동일한 포맷 사용 또는 별도 설정)
 logger = logging.getLogger(__name__)
 
-class SQSAdapter:
+class SQSClient:
     def __init__(self, queue_url: str, aws_access_key_id: Optional[str] = None,
                  aws_secret_access_key: Optional[str] = None, region_name: Optional[str] = None):
         self.queue_url = queue_url
@@ -17,7 +17,7 @@ class SQSAdapter:
                 aws_secret_access_key=aws_secret_access_key,
                 region_name=region_name
             )
-            logger.info(f"SQSAdapter initialized for queue: {queue_url} in region: {region_name if region_name else 'default'}")
+            logger.info(f"SQSClient initialized for queue: {queue_url} in region: {region_name if region_name else 'default'}")
         except Exception as e:
             logger.error(f"Failed to initialize SQS client: {e}", exc_info=True)
             raise
