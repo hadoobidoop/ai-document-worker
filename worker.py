@@ -47,22 +47,40 @@ def initialize_app():
     logger.info("               AI Analysis Worker Application Starting               ")
     logger.info("=====================================================================")
 
-    # config 모듈은 임포트 시점에 이미 로그를 남기므로 여기서는 상태만 확인
     logger.info(f"SQS Queue URL from config: {config.SQS_QUEUE_URL}")
     if not config.SQS_QUEUE_URL:
         logger.critical("필수 환경 변수 누락: SQS_QUEUE_URL. 워커를 시작할 수 없습니다.")
         raise EnvironmentError("SQS_QUEUE_URL is required for the worker to run.")
 
-    sqs_client = boto3.client('sqs') # 리전은 실행 환경(예: ECS Fargate)에서 자동 설정
-    logger.info("SQS client initialized.")
+    try:
+        sqs_client = boto3.client('sqs') # 리전은 실행 환경(예: ECS Fargate)에서 자동 설정
+        # 성공적으로 클라이언트 객체가 생성되었는지 확인
+        if sqs_client:
+            logger.info(f"SQS client initialized successfully. Type: {type(sqs_client)}")
+        else:
+            # boto3.client가 None을 반환하는 경우는 거의 없지만, 방어적으로 로깅
+            logger.error("SQS client initialization returned None, though no exception was raised.")
+            # 이 경우, sqs_client는 None으로 유지됩니다.
+            # raise RuntimeError("SQS client could not be initialized (returned None).") # 필요시 에러 발생
+    except Exception as e:
+        logger.error(f"Failed to initialize SQS client with boto3: {e}", exc_info=True)
+        sqs_client = None # 명시적으로 None으로 설정하여 이후 로직에서 감지되도록 함
+        raise # 상위 try-except에서 이 예외를 처리하도록 다시 발생시킴
+
+    # sqs_client가 성공적으로 초기화되지 않았다면 더 이상 진행하지 않도록 할 수 있음
+    if not sqs_client:
+        # 위의 try-except에서 raise를 했으므로 이 지점에 도달하지 않을 수 있지만,
+        # 만약 raise를 하지 않는다면 여기서 명시적으로 중단 필요
+        logger.critical("SQS client could not be established. Halting further initialization.")
+        raise RuntimeError("SQS client initialization failed, cannot proceed.")
+
 
     logger.info("Initializing AI modules and FAISS vector store...")
     categorizer.initialize_categorizer()
-    embedding_generator.initialize_embedding_model() # 이 함수가 embedding_generator.embedding_model_instance를 설정
+    embedding_generator.initialize_embedding_model()
     tag_extractor.initialize_tag_extractor_components(
-        use_konlpy_okt=True # True로 설정하여 Okt 사용 시도 (konlpy 설치 필요)
+        use_konlpy_okt=True
     )
-    # summarizer는 별도 초기화 함수가 현재 없음 (필요시 추가)
     vector_store_adapter.load_or_initialize_faiss_index()
 
     logger.info("---------------------------------------------------------------------")
@@ -180,7 +198,7 @@ def process_message(message: dict) -> bool:
                     else: # add_embeddings_to_faiss가 False 반환 (메모리 내 추가 실패)
                         logger.error(f"DocID {document_id}: Failed to add embeddings to in-memory FAISS index.")
                         error_messages_for_backend.append("Failed to add embeddings to in-memory FAISS.")
-                elif embeddings_data == []:
+                elif not embeddings_data:
                     logger.info(f"DocID {document_id}: No embeddings generated as content was empty or too short.")
                 else: # None 반환 (생성 오류)
                     logger.warning(f"DocID {document_id}: Embedding generation returned None.")
@@ -203,7 +221,7 @@ def process_message(message: dict) -> bool:
         final_error_message = "; ".join(error_messages_for_backend) if error_messages_for_backend else None
 
         # 6. 모든 분석 결과 DB에 저장
-        save_success = backend_api_adapter.save_analysis_to_backend(
+        save_success = backend_api_adapter.save_analysis_results_to_backend(
             document_id=document_id,
             user_id=user_id,
             s3_path=s3_path,
