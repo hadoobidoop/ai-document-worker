@@ -3,99 +3,93 @@ import logging
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+import json # JSON 파일을 읽기 위해 추가
+from pathlib import Path # 파일 경로 처리를 위해 추가
 
-# konlpy Okt 임포트
-from konlpy.tag import Okt # Okt가 시스템에 설치되어 있어야 함 (Java 필요)
+import config
+from nlp import nlp_context
 
 logger = logging.getLogger(__name__)
 
-# --- 카테고리 정의 (이전과 동일, 15개 카테고리) ---
-CATEGORY_DEFINITIONS = {
-    "뉴스/시사": ["속보 주요뉴스 헤드라인 브리핑 오늘의소식 사건사고 논평 칼럼 인터뷰", ...],
-    "IT/기술": ["AI 인공지능 머신러닝 딥러닝 빅데이터 클라우드 SaaS PaaS IaaS API", ...],
-    "경제/금융": ["주식 코스피 코스닥 나스닥 증권 시황 분석 투자전략 재테크 부동산 시장 전망", ...],
-    "경영/비즈니스": ["기업전략 마케팅광고 브랜딩 시장조사 소비자분석 고객경험 CX UX UI", ...],
-    "학문/교육": ["논문 학술지 연구자료 연구보고서 학회 컨퍼런스 세미나 강연 발표자료", ...],
-    "건강/의학": ["질병예방 건강검진 치료법 의학정보 의료뉴스 병원 의사 약사 간호사", ...],
-    "여행/레저": ["국내여행 해외여행 추천코스 관광지 명소 맛집 탐방 숙소 호텔 리조트 항공권", ...],
-    "문화/예술": ["영화리뷰 영화추천 독립영화 영화제 OTT서비스 드라마 예능 방송프로그램", ...],
-    "패션/뷰티": ["패션트렌드 스타일링 코디법 의류 신발 가방 액세서리 쇼핑정보 브랜드", ...],
-    "음식/요리": ["레시피 요리법 집밥 밑반찬 간편요리 베이킹 디저트 음료 커피 와인", ...],
-    "생활/리빙": ["인테리어 가구 홈데코 홈스타일링 DIY가구 집꾸미기 미니멀라이프", ...],
-    "자기계발": ["생산성향상 시간관리 목표설정 습관만들기 GTD 업무효율 커뮤니케이션 스킬", ...],
-    "자동차/교통": ["자동차리뷰 신차 중고차 전기차 자율주행 자동차정비 튜닝 세차 차량관리", ...],
-    "환경/기후": ["기후변화 지구온난화 탄소중립 ESG 환경오염 미세먼지 대기 수질 토양", ...],
-    "기타/커뮤니티": ["유머 웃긴글 짤방 밈 인터넷커뮤니티 게시판 Q&A 질문답변", ...]
-} # 각 카테고리별 키워드는 이전 답변의 상세 목록을 사용해주세요.
-
-# --- TF-IDF Vectorizer, 카테고리 벡터, Okt 객체 (워커 시작 시 초기화) ---
 vectorizer_instance: TfidfVectorizer | None = None
 category_names_list: list[str] = []
-category_vectors_matrix: np.ndarray | None = None # scipy.sparse.csr_matrix일 수도 있음
-okt_tokenizer: Okt | None = None # Okt 객체
+category_vectors_matrix: np.ndarray | None = None
+
+def _load_category_definitions_from_file(file_path_str: str) -> dict:
+    """
+    지정된 경로의 JSON 파일에서 카테고리 정의를 로드합니다.
+    파일이 없거나 JSON 파싱 오류 발생 시 빈 딕셔너리를 반환하고 오류를 로깅합니다.
+    """
+    file_path = Path(file_path_str)
+    if not file_path.is_file():
+        logger.error(f"Category definition file not found at: {file_path_str}. Returning empty definitions.")
+        return {}
+    try:
+        with file_path.open('r', encoding='utf-8') as f:
+            definitions = json.load(f)
+        logger.info(f"Successfully loaded category definitions from {file_path_str}")
+        return definitions
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from category file {file_path_str}: {e}", exc_info=True)
+        return {}
+    except Exception as e:
+        logger.error(f"Unexpected error loading category file {file_path_str}: {e}", exc_info=True)
+        return {}
 
 def _korean_tokenizer_okt(text: str) -> list[str]:
-    """
-    konlpy의 Okt 형태소 분석기를 사용하여 명사를 추출하는 토크나이저.
-    """
-    global okt_tokenizer
-    if okt_tokenizer is None:
-        # 이 경우는 initialize_categorizer가 먼저 호출되지 않았다는 의미이므로,
-        # 사실상 오류 상황이거나, 매우 드문 경우에 대한 방어 코드.
-        logger.warning("Okt tokenizer not initialized. Attempting to initialize now (this should ideally not happen here).")
-        try:
-            okt_tokenizer = Okt()
-        except Exception as e:
-            logger.error(f"Failed to initialize Okt tokenizer in _korean_tokenizer_okt: {e}")
-            # Okt 초기화 실패 시 기본 공백 토크나이저로 fallback (품질 저하)
-            return text.split()
-
+    current_okt_instance = nlp_context.shared_okt_instance
+    if not nlp_context.konlpy_available_for_nlp or current_okt_instance is None:
+        logger.warning("Shared Okt tokenizer is not available for categorizer. Falling back to space tokenizer.")
+        return text.split()
     try:
-        # 명사만 추출하거나, 필요시 다른 품사(형용사 등)도 포함 가능
-        # 예: nouns = okt_tokenizer.nouns(text)
-        # 예: morphs = okt_tokenizer.morphs(text, stem=True) # 어간 추출
-        # 여기서는 간단히 명사만 추출하고, 길이가 2 이상인 단어만 사용
-        nouns = okt_tokenizer.nouns(text)
+        nouns = current_okt_instance.nouns(text)
         meaningful_nouns = [noun for noun in nouns if len(noun) > 1]
-        if not meaningful_nouns and nouns : # 2글자 이상 명사가 없으면 1글자 명사라도 사용
+        if not meaningful_nouns and nouns:
             meaningful_nouns = nouns
-        # logger.debug(f"Tokenized with Okt (nouns > 1 char): {meaningful_nouns}")
         return meaningful_nouns
     except Exception as e:
-        logger.error(f"Error during Okt tokenization for text '{text[:50]}...': {e}")
-        return text.split() # 오류 발생 시 기본 공백 토크나이저로 fallback
+        logger.error(f"Error during Okt tokenization for text '{text[:50]}...': {e}", exc_info=True)
+        return text.split()
 
 
 def initialize_categorizer():
-    global vectorizer_instance, category_names_list, category_vectors_matrix, okt_tokenizer
+    global vectorizer_instance, category_names_list, category_vectors_matrix
+
     if vectorizer_instance is not None:
+        logger.info("TF-IDF categorizer is already initialized.")
         return
 
-    logger.info("Initializing TF-IDF categorizer with Okt for Korean tokenization...")
-    try:
-        # Okt 초기화 (Java 경로 등 환경 설정이 필요할 수 있음)
-        if okt_tokenizer is None: # Okt 객체가 아직 없다면 생성
-            logger.info("Initializing Okt tokenizer instance...")
-            okt_tokenizer = Okt()
-            logger.info("Okt tokenizer instance created successfully.")
+    logger.info("Initializing TF-IDF categorizer...")
 
+    # config.CATEGORIES_FILE_PATH에서 카테고리 정의 로드
+    category_definitions = _load_category_definitions_from_file(config.CATEGORIES_FILE_PATH)
+
+    if not category_definitions:
+        logger.error("No category definitions loaded. Categorizer initialization cannot proceed.")
+        return # 카테고리 정의가 없으면 초기화 중단
+
+    try:
         vectorizer_instance = TfidfVectorizer(
-            tokenizer=_korean_tokenizer_okt, # Okt 토크나이저 사용
-            min_df=2,              # 최소 2개 카테고리 대표 텍스트에서 등장하는 단어만 고려 (조정 가능)
-            ngram_range=(1,2),     # 유니그램 및 바이그램(연속된 두 단어) 고려
-            stop_words=None        # 필요시 한국어 불용어 사전 전달 ['은', '는', '이', '가', ...]
+            tokenizer=_korean_tokenizer_okt,
+            min_df=2,
+            ngram_range=(1,2),
+            stop_words=None
         )
 
         temp_category_names = []
         corpus_for_categories = []
 
-        for cat_name, representative_texts in CATEGORY_DEFINITIONS.items():
-            combined_text = " ".join(representative_texts)
-            corpus_for_categories.append(combined_text)
-            temp_category_names.append(cat_name)
+        for cat_name, representative_texts in category_definitions.items():
+            if isinstance(representative_texts, list) and all(isinstance(text, str) for text in representative_texts):
+                combined_text = " ".join(representative_texts)
+                corpus_for_categories.append(combined_text)
+                temp_category_names.append(cat_name)
+            else:
+                logger.warning(f"Invalid format for category '{cat_name}' in definitions. Skipping this category. Expected a list of strings.")
+
 
         if not corpus_for_categories:
-            logger.warning("No category definitions found. Categorizer might not work.")
+            logger.warning("No valid category data to process after parsing definitions. Categorizer might not work.")
             return
 
         category_vectors_matrix = vectorizer_instance.fit_transform(corpus_for_categories)
@@ -105,18 +99,18 @@ def initialize_categorizer():
     except Exception as e:
         logger.error(f"Failed to initialize TF-IDF categorizer: {e}", exc_info=True)
         vectorizer_instance = None
-        okt_tokenizer = None
 
 
-def classify_text_tfidf(text_to_classify: str, similarity_threshold: float = 0.05) -> str:
+def classify_text_tfidf(text_to_classify: str, similarity_threshold: float | None = None) -> str:
     if vectorizer_instance is None or category_vectors_matrix is None or not category_names_list:
         logger.error("Categorizer is not properly initialized. Returning '미분류'.")
-        # initialize_categorizer() # 워커 시작 시 초기화되므로, 여기서 재호출은 보통 불필요
         return "미분류"
 
     if not text_to_classify or not text_to_classify.strip():
         logger.info("Text to classify is empty. Returning '미분류'.")
         return "미분류"
+
+    final_similarity_threshold = similarity_threshold if similarity_threshold is not None else config.CATEGORIZER_SIMILARITY_THRESHOLD
 
     try:
         text_vector = vectorizer_instance.transform([text_to_classify])
@@ -131,12 +125,11 @@ def classify_text_tfidf(text_to_classify: str, similarity_threshold: float = 0.0
 
         logger.info(f"Text classification: Best match '{category_names_list[best_match_index]}' with score {best_similarity_score:.4f}")
 
-        if best_similarity_score >= similarity_threshold:
+        if best_similarity_score >= final_similarity_threshold:
             return category_names_list[best_match_index]
         else:
-            logger.info(f"Best similarity score {best_similarity_score:.4f} is below threshold {similarity_threshold}. Assigning to '기타'.")
-            return "기타"
+            logger.info(f"Best similarity score {best_similarity_score:.4f} is below threshold {final_similarity_threshold}. Assigning to '기타'.")
+            return "기타" # '기타'는 JSON 파일에 정의되어 있지 않아도 여기서 반환 가능
     except Exception as e:
         logger.error(f"Error during TF-IDF classification for text '{text_to_classify[:50]}...': {e}", exc_info=True)
         return "미분류"
-

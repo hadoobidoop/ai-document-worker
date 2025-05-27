@@ -1,53 +1,36 @@
 # analysis_worker_app/nlp_tasks/summarizer.py
 import logging
 import requests
-# import re # Langchain text_splitter 사용으로 re는 직접 필요 없을 수 있음
 
-# config 모듈에서 API 키 및 설정을 가져옵니다.
+# config 모듈 임포트
+import config
 
 # Langchain Text Splitter 임포트
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from config.settings import GROQ_API_KEY
-
 logger = logging.getLogger(__name__)
 
-# --- 청킹 관련 상수 ---
-# 단일 API 호출로 처리할 최대 원본 텍스트 글자 수 (Llama3 8B 8k 토큰 고려)
-MAX_CHARS_FOR_SINGLE_API_CALL = 15000
-# 각 청크의 목표 글자 수
-CHUNK_TARGET_SIZE_CHARS = 3500
-# 청크 간 겹치는 글자 수
-CHUNK_OVERLAP_CHARS = 300
-# 각 청크(중간) 요약 시 생성될 최대 토큰 수
-MAX_TOKENS_FOR_CHUNK_SUMMARY = 250
-MIN_TEXT_LENGTH_FOR_LONG_SUMMARY_CHARS = 400 # 긴 요약 요청 시 원본 길이 판단용
-
-# --- 모델 및 기타 상수 ---
-MODEL_TO_USE = "llama3-8b-8192" # 사용자 지정 모델 (8k 컨텍스트)
-
-# Langchain Text Splitter 초기화 (모듈 로드 시 한 번만)
-# chunk_size는 글자 수 기준, length_function=len이 기본값
+# Langchain Text Splitter 초기화 (config 값 사용)
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=CHUNK_TARGET_SIZE_CHARS,
-    chunk_overlap=CHUNK_OVERLAP_CHARS,
+    chunk_size=config.SUMMARIZER_CHUNK_TARGET_SIZE_CHARS,
+    chunk_overlap=config.SUMMARIZER_CHUNK_OVERLAP_CHARS,
     length_function=len,
 )
 
 def _call_groq_api(prompt_content: str, max_tokens: int, system_prompt_content: str) -> str | None:
     """Groq API를 호출하여 응답을 반환하는 내부 헬퍼 함수입니다."""
-    if not GROQ_API_KEY:
+    if not config.GROQ_API_KEY:
         logger.error("Groq API key is not configured in settings.py.")
         return None
 
     request_payload = {
-        "model": MODEL_TO_USE,
+        "model": config.SUMMARIZER_MODEL_NAME,
         "messages": [
             {"role": "system", "content": system_prompt_content},
             {"role": "user", "content": prompt_content}
         ],
         "max_tokens": max_tokens,
-        "temperature": 0.6, # 요약의 일관성을 위해 약간 낮게 설정
+        "temperature": 0.6,
         "top_p": 0.9,
     }
 
@@ -60,17 +43,16 @@ def _call_groq_api(prompt_content: str, max_tokens: int, system_prompt_content: 
 
     try:
         headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Authorization": f"Bearer {config.GROQ_API_KEY}",
             "Content-Type": "application/json",
         }
-        # Groq API 엔드포인트 확인 필요
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,
             json=request_payload,
-            timeout=90 # API 호출 타임아웃 (초 단위, 필요시 조절)
+            timeout=90
         )
-        response.raise_for_status() # HTTP 오류 발생 시 예외 발생
+        response.raise_for_status()
 
         response_data = response.json()
         summary = response_data["choices"][0]["message"]["content"].strip()
@@ -96,34 +78,37 @@ def _call_groq_api(prompt_content: str, max_tokens: int, system_prompt_content: 
 def summarize_with_groq(
         text_to_summarize: str,
         summary_type: str = "short",
-        long_summary_target_chars: int = 800,
-        long_summary_max_tokens: int = 450, # 최종 800자 요약 생성 시
-        short_summary_max_tokens: int = 150  # 최종 1-3줄 요약 생성 시
+        # 파라미터 기본값을 None으로 설정하고, None일 경우 config 값 사용
+        long_summary_target_chars: int | None = None,
+        long_summary_max_tokens: int | None = None,
+        short_summary_max_tokens: int | None = None
 ) -> str | None:
     if not text_to_summarize or not text_to_summarize.strip():
         logger.info("Text to summarize is empty.")
         return ""
 
+    # 파라미터가 None이면 config에서 기본값 로드
+    final_long_summary_target_chars = long_summary_target_chars if long_summary_target_chars is not None else config.SUMMARIZER_LONG_SUMMARY_TARGET_CHARS
+    final_long_summary_max_tokens = long_summary_max_tokens if long_summary_max_tokens is not None else config.SUMMARIZER_LONG_SUMMARY_MAX_TOKENS
+    final_short_summary_max_tokens = short_summary_max_tokens if short_summary_max_tokens is not None else config.SUMMARIZER_SHORT_SUMMARY_MAX_TOKENS
+
     original_text_char_length = len(text_to_summarize)
     system_prompt_for_final_summary = "You are an expert summarization assistant. Follow the user's instructions carefully for summary length, format, and handling of short or pre-summarized inputs."
 
-    perform_chunking = original_text_char_length > MAX_CHARS_FOR_SINGLE_API_CALL
-
+    perform_chunking = original_text_char_length > config.SUMMARIZER_MAX_CHARS_SINGLE_API_CALL
     text_for_final_summary_pass: str
 
     if perform_chunking:
-        logger.info(f"Text length ({original_text_char_length} chars) exceeds threshold ({MAX_CHARS_FOR_SINGLE_API_CALL} chars). Applying chunking strategy.")
-        # Langchain의 RecursiveCharacterTextSplitter 사용
+        logger.info(f"Text length ({original_text_char_length} chars) exceeds threshold ({config.SUMMARIZER_MAX_CHARS_SINGLE_API_CALL} chars). Applying chunking strategy.")
         chunks = text_splitter.split_text(text_to_summarize)
-        logger.info(f"Split text into {len(chunks)} chunks using Langchain splitter. Target chunk size: {CHUNK_TARGET_SIZE_CHARS} chars, Overlap: {CHUNK_OVERLAP_CHARS} chars.")
+        logger.info(f"Split text into {len(chunks)} chunks using Langchain splitter. Target chunk size: {config.SUMMARIZER_CHUNK_TARGET_SIZE_CHARS} chars, Overlap: {config.SUMMARIZER_CHUNK_OVERLAP_CHARS} chars.")
 
         intermediate_summaries = []
         chunk_system_prompt = "You are an assistant that summarizes segments of a larger document. Be concise, capture key information accurately, and maintain context if possible."
         for i, chunk_content in enumerate(chunks):
             logger.info(f"Summarizing chunk {i+1}/{len(chunks)} (length: {len(chunk_content)} chars).")
-            # 각 청크에 대한 프롬프트
             chunk_prompt = f"This is segment {i+1} of {len(chunks)}. Summarize this text segment concisely, capturing its main points and key details. This summary will be used to create a final, more comprehensive summary of the entire document:\n\n{chunk_content}"
-            intermediate_summary = _call_groq_api(chunk_prompt, MAX_TOKENS_FOR_CHUNK_SUMMARY, chunk_system_prompt)
+            intermediate_summary = _call_groq_api(chunk_prompt, config.SUMMARIZER_MAX_TOKENS_CHUNK_SUMMARY, chunk_system_prompt)
             if intermediate_summary:
                 intermediate_summaries.append(intermediate_summary)
             else:
@@ -133,69 +118,60 @@ def summarize_with_groq(
             logger.error("No intermediate summaries could be generated from chunks. Cannot proceed with summarization.")
             return None
 
-        intermediate_summaries_concatenated = "\n\n---\n\n".join(intermediate_summaries) # 각 중간 요약 사이에 구분자 추가
+        intermediate_summaries_concatenated = "\n\n---\n\n".join(intermediate_summaries)
         text_for_final_summary_pass = intermediate_summaries_concatenated
         logger.info(f"Generated {len(intermediate_summaries)} intermediate summaries. Total intermediate length: {len(text_for_final_summary_pass)} chars.")
 
-        if len(text_for_final_summary_pass) > MAX_CHARS_FOR_SINGLE_API_CALL :
+        if len(text_for_final_summary_pass) > config.SUMMARIZER_MAX_CHARS_SINGLE_API_CALL :
             logger.warning(
                 f"Concatenated intermediate summaries ({len(text_for_final_summary_pass)} chars) are still too long for a single final pass "
-                f"(limit: {MAX_CHARS_FOR_SINGLE_API_CALL} chars). Truncating intermediate summaries to fit."
+                f"(limit: {config.SUMMARIZER_MAX_CHARS_SINGLE_API_CALL} chars). Truncating intermediate summaries to fit."
             )
-            # 이 경우, text_for_final_summary_pass를 다시 청킹하거나, 앞부분만 사용하거나,
-            # 또는 단순히 잘라낼 수 있습니다. 여기서는 간단히 앞부분만 사용합니다.
-            text_for_final_summary_pass = text_for_final_summary_pass[:MAX_CHARS_FOR_SINGLE_API_CALL]
-
-    else: # 청킹 불필요
-        logger.info(f"Text length ({original_text_char_length} chars) is within single API call limit ({MAX_CHARS_FOR_SINGLE_API_CALL} chars). No chunking needed.")
+            text_for_final_summary_pass = text_for_final_summary_pass[:config.SUMMARIZER_MAX_CHARS_SINGLE_API_CALL]
+    else:
+        logger.info(f"Text length ({original_text_char_length} chars) is within single API call limit ({config.SUMMARIZER_MAX_CHARS_SINGLE_API_CALL} chars). No chunking needed.")
         text_for_final_summary_pass = text_to_summarize
 
-    # 2. 최종 요약 생성 요청
     final_prompt_content = ""
     max_tokens_for_final_request = 0
 
     if summary_type == "short":
         user_prompt_instruction = "Based on the following text (which might be a collection of summaries from a longer document, or the original short document itself), provide a very concise overall summary in one to three sentences:"
         final_prompt_content = f"{user_prompt_instruction}\n\n{text_for_final_summary_pass}"
-        max_tokens_for_final_request = short_summary_max_tokens
+        max_tokens_for_final_request = final_short_summary_max_tokens # 수정된 변수 사용
         logger.info(f"Requesting final short summary (max_tokens: {max_tokens_for_final_request}).")
 
     elif summary_type == "long_markdown":
-        # 원본 텍스트가 짧아서 청킹을 안했고, MIN_TEXT_LENGTH_FOR_LONG_SUMMARY_CHARS 보다도 짧은 경우에 대한 프롬프트 조정
-        if not perform_chunking and original_text_char_length < MIN_TEXT_LENGTH_FOR_LONG_SUMMARY_CHARS:
+        if not perform_chunking and original_text_char_length < config.SUMMARIZER_MIN_TEXT_LENGTH_LONG_SUMMARY_CHARS:
             user_prompt_instruction = (
                 f"The following text is quite short (around {original_text_char_length} characters). "
                 f"Provide a concise but well-structured summary using Markdown for formatting if appropriate. "
                 f"If the text is already a good summary, you can return it with minimal changes or apply appropriate Markdown formatting. "
-                f"The summary should not exceed {long_summary_target_chars} characters and should be suitable for the original text's length."
+                f"The summary should not exceed {final_long_summary_target_chars} characters and should be suitable for the original text's length." # 수정된 변수 사용
             )
-        else: # 청킹을 했거나, 청킹 안 했지만 MIN_TEXT_LENGTH_FOR_LONG_SUMMARY_CHARS 이상인 텍스트인 경우
+        else:
             user_prompt_instruction = (
                 f"Synthesize the provided text (which might be a collection of summaries from a longer document, or the original document itself) "
-                f"into a coherent, detailed, and well-structured summary, up to a maximum of {long_summary_target_chars} characters. "
+                f"into a coherent, detailed, and well-structured summary, up to a maximum of {final_long_summary_target_chars} characters. " # 수정된 변수 사용
                 f"Use Markdown for formatting (e.g., headings, bullet points, bold text) to enhance readability. "
                 f"The summary should cover key aspects, arguments, and conclusions from the original content."
             )
         final_prompt_content = f"{user_prompt_instruction}\n\n{text_for_final_summary_pass}"
-        max_tokens_for_final_request = long_summary_max_tokens
-        logger.info(f"Requesting final long markdown summary (target_chars: {long_summary_target_chars}, max_tokens: {max_tokens_for_final_request}).")
+        max_tokens_for_final_request = final_long_summary_max_tokens # 수정된 변수 사용
+        logger.info(f"Requesting final long markdown summary (target_chars: {final_long_summary_target_chars}, max_tokens: {max_tokens_for_final_request}).") # 수정된 변수 사용
     else:
         logger.error(f"Invalid summary_type: {summary_type}.")
         return None
 
     final_summary = _call_groq_api(final_prompt_content, max_tokens_for_final_request, system_prompt_for_final_summary)
 
-    # 최종 요약 길이 후처리 (long_markdown 경우에만)
     if final_summary and summary_type == "long_markdown":
-        if len(final_summary) > long_summary_target_chars * 1.15: # 목표 글자수보다 15% 이상 길 경우 조정
+        if len(final_summary) > final_long_summary_target_chars * 1.15: # 수정된 변수 사용
             logger.warning(
-                f"Generated long_markdown summary significantly exceeded target chars ({len(final_summary)} > {long_summary_target_chars}). "
-                f"Attempting to truncate to {long_summary_target_chars} characters."
+                f"Generated long_markdown summary significantly exceeded target chars ({len(final_summary)} > {final_long_summary_target_chars}). " # 수정된 변수 사용
+                f"Attempting to truncate to {final_long_summary_target_chars} characters." # 수정된 변수 사용
             )
-            # 더 정교한 자르기(예: 문장 경계)도 가능하지만, 우선 간단히 자름. Markdown 구조가 깨질 수 있음에 유의.
-            final_summary = final_summary[:long_summary_target_chars]
-            # 잘린 후 마지막 문장이 불완전할 수 있으므로, 마지막 문장 종결부호까지 찾아서 자르는 것이 더 좋음
-            # 예: last_period = final_summary.rfind('.'); if last_period > 0: final_summary = final_summary[:last_period+1]
+            final_summary = final_summary[:final_long_summary_target_chars] # 수정된 변수 사용
 
     if final_summary:
         logger.info(f"Successfully generated final {summary_type} summary. Final length: {len(final_summary)} chars.")
