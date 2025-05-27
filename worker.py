@@ -9,9 +9,12 @@ import boto3
 from botocore.exceptions import ClientError
 
 import config
+from adapters.api import backend_api_client
+from adapters.aws.s3_adapter import s3_client
+from adapters.db import vector_store_adapter
+from nlp import categorizer, embedding_generator, tag_extractor, summarizer
+
 # 애플리케이션 모듈 임포트
-from adapters import s3_reader, backend_api_adapter, vector_store_adapter
-from nlp_tasks import summarizer, categorizer, tag_extractor, embedding_generator
 
 # --- 로깅 설정 ---
 # LOG_LEVEL은 config.py에서도 설정할 수 있지만, 메인 애플리케이션에서 명시적으로 설정하는 것이 좋습니다.
@@ -123,13 +126,13 @@ def process_message(message: dict) -> bool:
         logger.info(f"Processing document_id: {document_id}, S3 Path: {s3_path}, User ID: {user_id}")
 
         # 1. S3 텍스트 로드
-        text_content = s3_reader.get_text_from_s3(s3_path)
+        text_content = s3_client.get_text_from_s3(s3_path)
         if text_content is None:
             logger.error(f"Document ID {document_id}: Failed to load text from S3. Aborting processing for this message.")
             processing_status_for_backend = "TEXT_LOAD_FAILURE"
             error_messages_for_backend.append("Failed to load text from S3.")
             # 이 경우에도 백엔드에 상태 업데이트 시도
-            backend_api_adapter.save_analysis_to_backend(
+            backend_api_client.save_analysis_results_to_backend(
                 document_id, user_id, s3_path, original_url,
                 processing_status_for_backend, "; ".join(error_messages_for_backend)
             )
@@ -221,7 +224,7 @@ def process_message(message: dict) -> bool:
         final_error_message = "; ".join(error_messages_for_backend) if error_messages_for_backend else None
 
         # 6. 모든 분석 결과 DB에 저장
-        save_success = backend_api_adapter.save_analysis_results_to_backend(
+        save_success = backend_api_client.save_analysis_results_to_backend(
             document_id=document_id,
             user_id=user_id,
             s3_path=s3_path,
