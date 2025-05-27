@@ -1,4 +1,4 @@
-# analysis_worker_app/adapters/s3_adapter.py
+# analysis_worker_app/adapters/s3_client.py
 
 import logging
 import boto3

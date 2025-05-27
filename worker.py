@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 
 import config
 from adapters.api import backend_api_client
-from adapters.aws.s3_adapter import s3_client
+from adapters.aws.s3_client import s3_client
 from adapters.db import vector_store_adapter
 from nlp import categorizer, embedding_generator, tag_extractor, summarizer
 
@@ -256,7 +256,7 @@ def process_message(message: dict) -> bool:
     except json.JSONDecodeError as e:
         logger.error(f"Message (ID: {message_id}) body JSON parsing failed: {e}. Body: {message.get('Body', '')}", exc_info=True)
         if receipt_handle and sqs_client: # 잘못된 형식은 재처리해도 소용 없으므로 삭제
-            sqs_client.delete_message(QueueUrl=config.SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
+            sqs_client.delete(QueueUrl=config.SQS_QUEUE_URL, ReceiptHandle=receipt_handle)
         return True
     except Exception as e: # process_message 함수의 최상위 예외 처리
         logger.error(f"CRITICAL unhandled error in process_message for DocID: {document_id_for_log}, Message ID: {message_id}. Error: {e}", exc_info=True)

@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from adapters.aws import sqs_adapter
+from adapters.aws import sqs_client
 from core.adapters import s3_storage
 from core.fechers.content_fetch_coordinator import coordinate_fetch_from_url
 from core.processing import text_cleaner
