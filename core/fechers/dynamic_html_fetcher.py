@@ -1,16 +1,14 @@
 # ingestion_lambda/dynamic_html_fetcher.py
 
 import logging
-import os
-from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright, Playwright, TimeoutError as PlaywrightTimeoutError # TimeoutError 임포트
 
 from bs4 import BeautifulSoup
 
-from . import text_cleaner
-from .html_constants import UNWANTED_HTML_TAGS
-from .static_html_fetcher import is_valid_url
+from core.constants.html_fetch_constants import UNWANTED_HTML_TAGS
+from core.fechers.static_html_fetcher import is_valid_url
+from core.processing import text_cleaner
 
 logger = logging.getLogger(__name__) # __name__ 사용 권장
 

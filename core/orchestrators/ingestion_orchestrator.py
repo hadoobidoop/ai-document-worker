@@ -3,13 +3,10 @@
 import logging
 import uuid
 
-# 같은 ingestion_lambda 디렉토리 내 모듈들을 임포트
-from . import text_cleaner
-from .content_fetch_coordinator import coordinate_fetch_from_url # 새로 추가
-
-# 어댑터 모듈 임포트
-from .adapters import s3_storage
-from .adapters import sqs_publisher
+from adapters.aws import sqs_adapter
+from core.adapters import s3_storage
+from core.fechers.content_fetch_coordinator import coordinate_fetch_from_url
+from core.processing import text_cleaner
 
 logger = logging.getLogger(__name__) # __name__ 사용 권장
 
@@ -128,7 +125,7 @@ def process_input(text: str | None = None, url: str | None = None, metadata: dic
         # 예: sqs_message_body['custom_tag'] = metadata.get('custom_tag')
 
         logger.info(f"Initiating SQS message publishing for S3 path: {s3_full_path}")
-        sqs_message_id = sqs_publisher.publish_analysis_request(sqs_message_body)
+        sqs_message_id = sqs_adapter.publish_analysis_request(sqs_message_body)
 
         processing_details['sqs_message_id'] = sqs_message_id
 

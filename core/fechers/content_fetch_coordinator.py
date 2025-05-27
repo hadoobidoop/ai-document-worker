@@ -2,11 +2,8 @@
 
 import logging
 
-# 다른 모듈 임포트 (실제 프로젝트 구조에 맞게)
-from . import static_html_fetcher
-from . import dynamic_html_fetcher
-from . import content_analyzer # 방금 생성한 content_analyzer
-from . import text_cleaner # dynamic_html_fetcher 내부에서도 사용되지만, 여기서도 필요할 수 있음
+from core.fechers import static_html_fetcher, dynamic_html_fetcher
+from core.processing import content_analyzer
 
 logger = logging.getLogger(__name__)
 

@@ -5,9 +5,8 @@ from bs4 import BeautifulSoup
 import logging
 from urllib.parse import urlsplit
 
-# 같은 ingestion_lambda 디렉토리 내 다른 모듈 임포트
-from . import text_cleaner
-from .html_constants import UNWANTED_HTML_TAGS
+from core.constants.html_fetch_constants import UNWANTED_HTML_TAGS
+from core.processing import text_cleaner
 
 logger = logging.getLogger()
 # 로거 레벨은 handler.py에서 설정되었거나 Lambda 환경 설정 따름

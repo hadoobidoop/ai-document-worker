@@ -1,4 +1,4 @@
-# analysis_worker_app/adapters/backend_api_adapter.py
+# analysis_worker_app/adapters/backend_api_client.py
 # 이제 이 파일이 표준 백엔드 API 어댑터입니다.
 
 import logging

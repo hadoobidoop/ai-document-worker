@@ -1,4 +1,4 @@
-# ingestion_lambda/adapters/sqs_publisher.py
+# ingestion_lambda/adapters/sqs_adapter.py
 
 import boto3
 import json
